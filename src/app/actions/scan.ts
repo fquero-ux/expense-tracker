@@ -26,56 +26,58 @@ export async function scanReceipt(formData: FormData) {
         const base64 = buffer.toString('base64');
         console.log('Image converted to base64');
 
-        // Configurar modelo - Usando 2.0 ya que 1.5 puede estar deprecado en 2026
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        // Usamos 1.5-flash que es extremadamente estable y rápido para OCR
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-1.5-flash',
+            generationConfig: {
+                responseMimeType: 'application/json',
+            }
+        });
 
         const prompt = `
-            Analiza esta imagen de una boleta, recibo o factura, especialmente de formatos chilenos (SII, RUT, etc.).
-            Extrae la siguiente información en formato JSON estricto (sin markdown):
+            Eres un experto en extracción de datos de boletas chilenas (SII, facturas).
+            Extrae estos datos en JSON:
             {
-                "description": "Una descripción corta y clara del gasto (ej: Compra en Líder, Almuerzo, Uber). Si es una boleta chilena, busca el nombre del comercio.",
-                "amount": 12345 (el monto TOTAL final pagado, como número entero o decimal),
-                "date": "YYYY-MM-DD" (la fecha de la boleta. Si no la encuentras o es ilegible, usa null),
-                "category": "Asigna una de estas categorías: Comida, Transporte, Oficina, Software, Servicios, Otros. Elige la que mejor se adapte al gasto."
+                "description": "Nombre del comercio o glosa corta",
+                "amount": total pagado como número,
+                "date": "YYYY-MM-DD",
+                "category": "Comida|Transporte|Oficina|Software|Servicios|Otros"
             }
-            Reglas importantes:
-            1. Si es una boleta de Chile, pon especial atención al "TOTAL" o "VALOR TOTAL".
-            2. La descripción debe ser amigable.
-            3. Si el monto tiene puntos como separadores de miles (formato chileno 1.000), asegúrate de devolverlo como número limpio (1000).
-            4. Devuelve SOLO el objeto JSON, nada más.
+            Importante: 
+            - Si es chilena, el monto es el TOTAL. 
+            - Si no hay fecha usa null.
+            - Responde SOLO con el JSON.
         `;
 
-        console.log('Sending request to Gemini...');
+        console.log('Sending request to Gemini 1.5 Flash...');
         const result = await model.generateContent([
             prompt,
             {
                 inlineData: {
                     data: base64,
-                    mimeType: file.type
+                    mimeType: 'image/jpeg' // Forzamos jpeg ya que comprimimos a eso
                 }
             }
         ]);
 
-        console.log('Response received from Gemini');
         const response = await result.response;
         const text = response.text();
-        console.log(`Raw response text: ${text}`);
+        console.log(`Raw text: ${text}`);
 
-        // Limpiar JSON (a veces Gemini devuelve ```json ... ```)
-        const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const data = JSON.parse(jsonString);
-        console.log(`Parsed data: ${JSON.stringify(data)}`);
-
-        return { success: true, data };
+        try {
+            const data = JSON.parse(text);
+            return { success: true, data };
+        } catch (parseError) {
+            console.error('Parse error:', text);
+            return { error: 'La IA devolvió un formato ilegible.' };
+        }
 
     } catch (error: any) {
         console.error('Error scanning receipt:', error);
 
-        // Handle Rate Limiting (429)
-        if (error.message?.includes('429') || error.status === 429) {
-            return { error: 'Cuota de IA excedida. Por favor espera un minuto e intenta de nuevo.' };
-        }
+        if (error.message?.includes('429')) return { error: 'Cuota excedida. Reintenta en 1 min.' };
+        if (error.message?.includes('401')) return { error: 'Error de autenticación con la IA.' };
 
-        return { error: 'Error al analizar la boleta con IA.' };
+        return { error: `Error del servidor: ${error.message || 'Error desconocido'}` };
     }
 }
