@@ -72,8 +72,14 @@ export const ExpenseForm = ({ expense, onSuccess }: ExpenseFormProps) => {
 
                 setMessage({ type: 'success', text: '¡Boleta analizada! Revisa los datos.' });
             }
-        } catch (error) {
-            setMessage({ type: 'error', text: 'Error de conexión con el escáner.' });
+        } catch (error: any) {
+            console.error('Scan error:', error);
+            setMessage({
+                type: 'error',
+                text: error?.message?.includes('payload too large')
+                    ? 'La imagen es muy pesada. Prueba con una foto de menor resolución.'
+                    : 'Error de conexión con el escáner (Vercel Timeout o Tamaño de imagen).'
+            });
         } finally {
             setScanning(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
