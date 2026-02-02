@@ -53,7 +53,7 @@ export const ExpenseForm = ({ expense, onSuccess }: ExpenseFormProps) => {
                 img.src = event.target?.result as string;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 1200;
+                    const MAX_WIDTH = 800; // Reducimos a 800px para máxima velocidad
                     const MAX_HEIGHT = 1200;
                     let width = img.width;
                     let height = img.height;
@@ -77,7 +77,7 @@ export const ExpenseForm = ({ expense, onSuccess }: ExpenseFormProps) => {
 
                     canvas.toBlob((blob) => {
                         resolve(blob || file);
-                    }, 'image/jpeg', 0.8); // 80% quality for good OCR
+                    }, 'image/jpeg', 0.6); // Bajamos a 60% calidad para que el archivo sea muy ligero
                 };
             };
         });
@@ -115,12 +115,13 @@ export const ExpenseForm = ({ expense, onSuccess }: ExpenseFormProps) => {
                 setMessage({ type: 'success', text: '¡Boleta analizada! Revisa los datos.' });
             }
         } catch (error: any) {
-            console.error('Scan error:', error);
+            console.error('Scan error detail:', error);
+            const errorMsg = error?.message || '';
             setMessage({
                 type: 'error',
-                text: error?.message?.includes('payload too large')
-                    ? 'La imagen es muy pesada incluso después de comprimir.'
-                    : 'Error de conexión con el escáner (Vercel Timeout o Resolución excesiva).'
+                text: errorMsg.includes('payload too large')
+                    ? 'La imagen es muy pesada. Intenta con otra foto.'
+                    : `Error de conexión: ${errorMsg || 'Tiempo de espera agotado'}. Prueba de nuevo.`
             });
         } finally {
             setScanning(false);
